@@ -1,0 +1,27 @@
+{
+  "name": "jacaranda-corner",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A small Sydney spring, made with Three.js",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "node tests/geometry.test.mjs && node tests/road-edge.test.mjs && node tests/night-lighting.test.mjs && node tests/time-slider.test.mjs && node tests/scene.test.mjs && node tests/shadows.test.mjs",
+    "test:geometry": "node tests/geometry.test.mjs",
+    "test:road-edge": "node tests/road-edge.test.mjs",
+    "test:night-lighting": "node tests/night-lighting.test.mjs",
+    "test:time-slider": "node tests/time-slider.test.mjs",
+    "test:scene": "node tests/scene.test.mjs",
+    "test:shadows": "node tests/shadows.test.mjs"
+  },
+  "dependencies": {
+    "three": "^0.181.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "vite": "^7.2.2",
+    "vite-plugin-singlefile": "^2.3.4"
+  }
+}

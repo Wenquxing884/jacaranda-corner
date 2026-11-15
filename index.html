@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f5f3ef" />
+    <meta name="description" content="一方悉尼蓝花楹街角。可旋转、可漫游的 Three.js 微缩风景。" />
+    <title>蓝花楹街角 · A corner of Sydney</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 50 50'%3E%3Ctext y='.9em' font-size='44'%3E✳%3C/text%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <main id="app">
+      <div id="scene" aria-label="悉尼蓝花楹街角三维场景，可拖动旋转、滚轮或双指缩放" role="img"></div>
+      <header class="masthead">
+        <span class="wordmark"><span class="brand-flower">✳</span> SMALL WORLDS <span class="edition">/ 001</span></span>
+        <span class="coordinates">SYDNEY, AUSTRALIA <span>33°51′ S · 151°12′ E</span></span>
+      </header>
+      <section class="intro" aria-labelledby="title">
+        <div class="eyebrow"><i></i> A LITTLE PLACE TO PAUSE</div>
+        <h1 id="title">蓝花楹街角<span>Jacaranda corner.</span></h1>
+        <p>把悉尼的春天，轻轻收进一方小世界。</p>
+        <div class="place-tag"><span class="place-mark">✧</span><span class="place-copy"><b>PADDINGTON</b><em>SYDNEY · NOVEMBER IN BLOOM</em></span></div>
+        <div class="scene-note"><span class="note-line"></span><span>风经过，紫色的花就落下。<small>TOUCH A CROWN · OPEN THE SYDNEY POSTER</small></span></div>
+      </section>
+      <div class="time-panel" aria-label="时段切换">
+        <span class="panel-label">此刻的光 <span id="time-caption">14:00</span></span>
+        <div class="time-options" role="group" aria-label="选择光照时段">
+          <button class="time-button active" data-time="day" aria-pressed="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg><span>白天</span></button>
+          <button class="time-button" data-time="dusk" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M3 16h18M5 20h14M6 13a6 6 0 0 1 12 0M12 2v2M3 6l2 2m14 0 2-2"/></svg><span>黄昏</span></button>
+          <button class="time-button" data-time="night" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M20 15.3A8.3 8.3 0 0 1 8.7 4 8.4 8.4 0 1 0 20 15.3Z"/><path d="M17 3v4m-2-2h4"/></svg><span>夜晚</span></button>
+        </div>
+      </div>
+      <div class="view-tools" role="group" aria-label="视角控制">
+        <button id="zoom-in" aria-label="放大" title="放大"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+        <button id="zoom-out" aria-label="缩小" title="缩小"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+        <span></span>
+        <button id="reset" aria-label="复位视角" title="复位视角"><svg viewBox="0 0 24 24"><path d="M4 10a8 8 0 1 1 .6 6M4 4v6h6"/></svg></button>
+      </div>
+      <footer><div class="interaction-hint"><svg viewBox="0 0 24 24"><rect x="6" y="2" width="12" height="19" rx="6"/><path d="M12 6v4"/></svg><span class="desktop-hint">拖动旋转 <b>·</b> 滚轮缩放 <b>·</b> 点击树冠 / 墙上画片</span><span class="mobile-hint">单指旋转 · 双指缩放 · 轻触花冠 / 海报</span></div><span class="footer-right">A SEASON, IN MINIATURE <span>✳</span></span></footer>
+      <div id="loading"><div class="loading-flower">✳</div><span>让春天慢一点…</span></div>
+      <div id="toast" role="status" aria-live="polite"></div>
+      <div id="sydney-modal" class="sydney-modal" aria-hidden="true">
+        <div class="sydney-shade"></div>
+        <section class="sydney-dialog" role="dialog" aria-modal="true" aria-labelledby="sydney-title">
+          <button id="sydney-close" class="sydney-close" type="button" aria-label="关闭悉尼风景">Close <span aria-hidden="true">×</span></button>
+          <div class="sydney-heading">
+            <span>SYDNEY</span>
+            <h2 id="sydney-title">Jacaranda <i>Days</i></h2>
+            <p>一日将落，海港开始发光。<br><em>A harbour held in a little frame.</em></p>
+          </div>
+          <div id="sydney-stage" class="sydney-stage" aria-label="可拖动环看的悉尼海港三维风景"></div>
+          <div class="sydney-foot"><span>A moment by the water.</span><small>拖动画面环看 · 轻触花枝落花 · Esc 关闭</small></div>
+        </section>
+      </div>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
