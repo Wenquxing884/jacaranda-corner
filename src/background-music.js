@@ -13,9 +13,10 @@ export function createBackgroundMusic() {
   audio.volume = .28;
   document.body.appendChild(audio);
   const buttons = [...document.querySelectorAll('[data-music-toggle]')];
-  let remembered = false;
-  try { remembered = localStorage.getItem(preferenceKey) === 'on'; } catch { /* Storage can be disabled on local pages. */ }
-  let state = remembered ? 'ready' : 'idle', wanted = false, request = 0;
+  let enabled = true;
+  try { enabled = localStorage.getItem(preferenceKey) !== 'off'; } catch { /* Storage can be disabled on local pages. */ }
+  let state = enabled ? 'ready' : 'idle', wanted = false, request = 0, awaitingGesture = false;
+  const gestureEvents = ['pointerup', 'keydown', 'click'];
 
   function remember(enabled) {
     try { localStorage.setItem(preferenceKey, enabled ? 'on' : 'off'); } catch { /* Playback must work without storage. */ }
@@ -40,20 +41,22 @@ export function createBackgroundMusic() {
   function stop() {
     wanted = false;
     request++;
+    clearGestureRetry();
     audio.pause();
     remember(false);
     update('idle');
   }
 
   async function start() {
+    clearGestureRetry();
     wanted = true;
     const current = ++request;
     update('loading');
-    // Assigning the source lazily avoids fetching the song on a silent visit.
+    // An explicitly saved "off" preference never loads the song until enabled.
     if (!audio.hasAttribute('src')) audio.src = musicUrl;
     else if (audio.error) audio.load();
     try {
-      // Keep play() inside the click's user activation, before any await.
+      // Try on entry; retries run synchronously inside a trusted user gesture.
       await audio.play();
       if (current !== request) { if (!wanted) audio.pause(); return; }
       if (!wanted) { audio.pause(); return; }
@@ -63,12 +66,32 @@ export function createBackgroundMusic() {
       if (current !== request) return;
       wanted = false;
       audio.pause();
-      update(error.name === 'NotAllowedError' ? 'blocked' : 'error');
+      if (error.name === 'NotAllowedError') {
+        update('blocked');
+        awaitingGesture = true;
+        gestureEvents.forEach(type => document.addEventListener(type, retryFromGesture, true));
+      } else update('error');
     }
+  }
+
+  function clearGestureRetry() {
+    awaitingGesture = false;
+    gestureEvents.forEach(type => document.removeEventListener(type, retryFromGesture, true));
+  }
+
+  function retryFromGesture(event) {
+    if (!awaitingGesture || !event.isTrusted) return;
+    // Let the music button perform its own action, rather than starting in
+    // pointerup and immediately pausing again in the button's click handler.
+    if (event.target instanceof Element && event.target.closest('[data-music-toggle]')) return;
+    if (event.type === 'keydown' && (event.ctrlKey || event.metaKey || event.altKey
+      || ['Tab', 'Escape', 'Shift', 'Control', 'Alt', 'Meta', 'CapsLock'].includes(event.key))) return;
+    start();
   }
 
   audio.addEventListener('playing', () => {
     if (!wanted) { audio.pause(); return; }
+    clearGestureRetry();
     remember(true);
     update('playing');
   });
@@ -80,12 +103,14 @@ export function createBackgroundMusic() {
     const wasWanted = wanted;
     wanted = false;
     request++;
+    clearGestureRetry();
     audio.pause();
     if (wasWanted) update('error');
   });
   buttons.forEach(button => button.addEventListener('click', () => wanted ? stop() : start()));
-  // A saved "on" preference offers one-click continuation on the next visit;
-  // it never claims to be playing or bypasses browser autoplay restrictions.
+  // Autoplay is best-effort: a browser may require the first real interaction.
+  // Preserve an explicit "off" preference across reloads and both scenes.
   update(state);
-  return { inspect: () => ({ state, paused: audio.paused, currentTime: audio.currentTime, volume: audio.volume, loop: audio.loop, error: audio.error?.code ?? null }) };
+  if (enabled) start();
+  return { inspect: () => ({ state, awaitingGesture, paused: audio.paused, currentTime: audio.currentTime, volume: audio.volume, loop: audio.loop, error: audio.error?.code ?? null }) };
 }

@@ -18,7 +18,33 @@ const angle = process.env.JACARANDA_ANGLE || (process.platform === 'win32' ? 'd3
 const preferenceKey = 'jacaranda-corner:music';
 const screenshots = process.env.JACARANDA_MUSIC_SCREENSHOTS === '1';
 const errors = [];
-let browser;
+let browser, allowedBrowser;
+
+async function tracePlayback(context, { rejectFirst = false, denyStorage = false } = {}) {
+  await context.addInitScript(({ rejectFirst, denyStorage }) => {
+    const nativePlay = HTMLMediaElement.prototype.play;
+    const trace = window.__musicPlayTrace = { calls: [], trustedInteractions: 0, rejected: 0 };
+    for (const type of ['pointerup', 'click', 'keydown']) {
+      document.addEventListener(type, event => { if (event.isTrusted) trace.trustedInteractions++; }, true);
+    }
+    HTMLMediaElement.prototype.play = function () {
+      if (this.id !== 'background-music') return nativePlay.call(this);
+      trace.calls.push({
+        trustedInteractions: trace.trustedInteractions,
+        userActive: navigator.userActivation?.isActive ?? null,
+        hasBeenActive: navigator.userActivation?.hasBeenActive ?? null
+      });
+      if (rejectFirst && trace.calls.length === 1 && trace.trustedInteractions === 0) {
+        trace.rejected++;
+        return Promise.reject(new DOMException('Simulated first autoplay rejection', 'NotAllowedError'));
+      }
+      return nativePlay.call(this);
+    };
+    if (denyStorage) {
+      Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw new DOMException('Storage unavailable for this test', 'SecurityError'); } });
+    }
+  }, { rejectFirst, denyStorage });
+}
 
 async function loaded(page) {
   await page.waitForFunction(() => window.__JACARANDA__?.inspect().frames >= 2
@@ -83,6 +109,21 @@ async function paused(page) {
   return after;
 }
 
+async function autoplayOutcome(page, label) {
+  await page.waitForFunction(() => window.__musicPlayTrace?.calls.length > 0
+    && ['playing', 'blocked', 'error'].includes(document.querySelector('#music-toggle').dataset.state), null, { timeout: 30000 });
+  const state = await musicState(page);
+  const trace = await page.evaluate(() => window.__musicPlayTrace);
+  assert.ok(['playing', 'blocked'].includes(state.buttons[0].state), `${label}: autoplay either starts or reports the browser restriction`);
+  const isPlaying = state.buttons[0].state === 'playing';
+  synced(state, isPlaying, label);
+  assert.equal(state.paused, !isPlaying, `${label}: the displayed state reflects real media playback`);
+  assert.equal(state.autoplay, false, `${label}: startup is an explicit play() attempt rather than an unchecked autoplay attribute`);
+  assert.equal(state.hasSource, true, `${label}: startup assigns the audio resource`);
+  assert.equal(trace.calls[0].trustedInteractions, 0, `${label}: the first play() attempt precedes all user input`);
+  return { state, trace };
+}
+
 async function reachableControl(page, selector, avoidSelectors) {
   const state = await page.evaluate(({ selector, avoidSelectors }) => {
     const button = document.querySelector(selector), rect = button.getBoundingClientRect();
@@ -127,24 +168,29 @@ async function capture(page, name) {
 }
 
 try {
-  // A real user click must unlock playback; no autoplay-policy bypass is used.
+  // Keep real browser policy for gesture fallback and normal controls. Only
+  // the first play() promise in each document is rejected deterministically.
   browser = await chromium.launch({ channel: 'chrome', headless: true, args: [`--use-angle=${angle}`, '--allow-file-access-from-files'] });
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  await tracePlayback(context, { rejectFirst: true });
   const page = await context.newPage();
   page.on('pageerror', error => errors.push(error.message));
   await page.goto(targetURL);
   await loaded(page);
-  const initial = await musicState(page);
-  synced(initial, false, 'first visit');
-  assert.equal(initial.paused, true, 'the first visit is silent');
-  assert.equal(initial.autoplay, false, 'music does not use autoplay');
-  assert.equal(initial.hasSource, false, 'the MP3 source is assigned lazily after an explicit click');
-  assert.ok(initial.buttons.every(button => button.state === 'idle'), 'first visit starts with music off');
+  const firstAutoplay = await autoplayOutcome(page, 'first visit');
+  const initial = firstAutoplay.state;
+  assert.equal(firstAutoplay.trace.rejected, 1, 'the simulated restriction rejected the startup attempt');
+  assert.equal(firstAutoplay.trace.calls.length, 1, 'blocked autoplay does not retry in a busy loop');
+  assert.equal(initial.buttons[0].state, 'blocked', 'blocked first autoplay remains visibly pending');
+  assert.equal(initial.paused, true, 'blocked autoplay never pretends music is playing');
   const desktop = await reachableControl(page, '#music-toggle', ['.masthead', '.intro', '.time-panel', '.view-tools']);
   const cameraBeforeMusic = await page.evaluate(() => window.__JACARANDA__.camera.position.toArray());
 
-  await page.locator('#music-toggle').click();
+  // This is a regular page control, not the music toggle. Its trusted click
+  // should retry a blocked startup and let Chrome decode the actual song.
+  await page.getByRole('button', { name: '白天', exact: true }).click();
   const decoded = await playing(page);
+  assert.ok(await page.evaluate(() => window.__musicPlayTrace.calls.length >= 2), 'the first trusted page interaction retries blocked autoplay');
   if (offline && !existingURL) assert.equal(decoded.embeddedSource, true, 'the offline HTML embeds the MP3 rather than depending on the original local file');
   assert.equal(await page.evaluate(key => localStorage.getItem(key), preferenceKey), 'on', 'enabled preference is saved');
   await capture(page, 'desktop-playing');
@@ -216,18 +262,29 @@ try {
 
   await page.reload();
   await loaded(page);
-  const restored = await musicState(page);
-  synced(restored, false, 'restored preference');
-  assert.equal(restored.paused, true, 'restoring an on preference never autoplays');
-  assert.ok(restored.buttons.every(button => button.state === 'ready'), 'an on preference waits visibly for a new explicit click');
-  await page.locator('#music-toggle').click();
+  const restoredAutoplay = await autoplayOutcome(page, 'restored on preference');
+  const restored = restoredAutoplay.state;
+  assert.equal(restoredAutoplay.trace.rejected, 1, 'saved-on reload attempts autoplay before user input');
+  assert.equal(restored.buttons[0].state, 'blocked', 'saved-on rejection remains eligible for a user gesture');
+  await page.getByRole('button', { name: '白天', exact: true }).focus();
+  await page.keyboard.press('Enter');
   await playing(page);
   await page.locator('#music-toggle').click();
   await paused(page);
   await page.reload();
   await loaded(page);
   const restoredOff = await musicState(page);
+  synced(restoredOff, false, 'restored off preference');
   assert.ok(restoredOff.buttons.every(button => button.state === 'idle') && restoredOff.paused, 'an off preference remains off after reload');
+  assert.equal(restoredOff.hasSource, false, 'an off preference does not load the audio resource');
+  assert.equal(await page.evaluate(() => window.__musicPlayTrace.calls.length), 0, 'an off preference never attempts autoplay');
+  await page.getByRole('button', { name: '黄昏', exact: true }).click();
+  await page.getByRole('button', { name: '白天', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => window.__JACARANDA__.inspect().time === 'day' && window.__JACARANDA__.inspect().transition >= .999);
+  const offAfterGestures = await musicState(page);
+  assert.ok(offAfterGestures.paused && !offAfterGestures.hasSource, 'ordinary pointer and keyboard interaction respect an explicit off preference');
+  assert.equal(await page.evaluate(() => window.__musicPlayTrace.calls.length), 0, 'gesture fallback is disarmed when music was turned off');
 
   await page.setViewportSize({ width: 900, height: 600 });
   await page.waitForFunction(() => window.__JACARANDA__.camera.aspect === innerWidth / innerHeight);
@@ -248,31 +305,57 @@ try {
   await context.close();
 
   // file:// and restricted storage must not make the audio control unusable.
-  const deniedContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
-  await deniedContext.addInitScript(() => {
-    Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw new DOMException('Storage unavailable for this test', 'SecurityError'); } });
-  });
+  const deniedContext = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  await tracePlayback(deniedContext, { rejectFirst: true, denyStorage: true });
   const deniedPage = await deniedContext.newPage();
   deniedPage.on('pageerror', error => errors.push(error.message));
   await deniedPage.goto(targetURL);
   await loaded(deniedPage);
-  synced(await musicState(deniedPage), false, 'storage unavailable');
-  await deniedPage.locator('#music-toggle').click();
+  const deniedAutoplay = await autoplayOutcome(deniedPage, 'storage unavailable');
+  assert.equal(deniedAutoplay.state.buttons[0].state, 'blocked', 'unavailable storage still uses the default autoplay preference');
+  await deniedPage.getByRole('button', { name: '白天', exact: true }).tap();
   await playing(deniedPage);
   await deniedPage.locator('#music-toggle').click();
   await paused(deniedPage);
   await deniedContext.close();
+
+  // Separately model a browser that already permits autoplay. No trusted
+  // interactions are issued here, and real decoding/time advancement must
+  // still occur. The policy override is intentionally not used above.
+  allowedBrowser = await chromium.launch({
+    channel: 'chrome', headless: true,
+    args: [`--use-angle=${angle}`, '--allow-file-access-from-files', '--autoplay-policy=no-user-gesture-required']
+  });
+  const allowedContext = await allowedBrowser.newContext({ viewport: { width: 390, height: 844 } });
+  await tracePlayback(allowedContext);
+  const allowedPage = await allowedContext.newPage();
+  allowedPage.on('pageerror', error => errors.push(error.message));
+  await allowedPage.goto(targetURL);
+  await loaded(allowedPage);
+  const allowedAutoplay = await autoplayOutcome(allowedPage, 'explicitly allowed autoplay policy');
+  const autoplayDecoded = await playing(allowedPage);
+  assert.equal(allowedAutoplay.state.buttons[0].state, 'playing', 'a browser permitting autoplay starts the song on first visit');
+  assert.equal(allowedAutoplay.trace.calls[0].userActive, false, 'allowed autoplay begins without user activation');
+  assert.equal(await allowedPage.evaluate(() => window.__musicPlayTrace.trustedInteractions), 0, 'successful autoplay required no synthetic or real user gesture');
+  if (offline && !existingURL) assert.equal(autoplayDecoded.embeddedSource, true, 'allowed offline autoplay decodes the embedded MP3');
+  await allowedContext.close();
+  await allowedBrowser.close();
+  allowedBrowser = null;
 
   assert.deepEqual(errors, [], 'music playback, rejected promises and unavailable storage cause no page errors');
   console.log(JSON.stringify({
     ok: true, offline: offline && !existingURL,
     media: { duration: decoded.duration, volume: decoded.volume, embeddedSource: decoded.embeddedSource, resumedFrom: stopped.currentTime, resumedTo: resumed.currentTime },
     desktop: desktop.rect, postcard: postcard.rect, intermediate: intermediate.rect, mobile: mobile.rect, mobilePostcard: mobilePostcard.rect,
-    restored: restored.buttons[0].state, blocked: blocked.buttons[0].state,
-    checks: ['real MP3 decode', 'pause/resume', 'keyboard', 'time and postcard continuity', 'on/off/on promise race', 'blocked-play retry', 'saved preference', 'mobile controls', 'storage fallback'],
+    autoplay: { initialCalls: firstAutoplay.trace.calls.length, firstState: initial.buttons[0].state, restoredState: restored.buttons[0].state,
+      allowedPolicyState: allowedAutoplay.state.buttons[0].state, allowedPolicyCurrentTime: autoplayDecoded.currentTime },
+    blocked: blocked.buttons[0].state,
+    checks: ['startup play attempt', 'trusted page-click fallback', 'allowed-policy autoplay decode', 'real MP3 decode', 'pause/resume', 'keyboard fallback',
+      'time and postcard continuity', 'on/off/on promise race', 'blocked-play retry', 'saved on/off preference', 'off stays off after other gestures', 'mobile controls', 'storage fallback with touch'],
     errors
   }, null, 2));
 } finally {
+  await allowedBrowser?.close();
   await browser?.close();
   await server?.close();
 }
