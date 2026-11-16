@@ -23,13 +23,28 @@ let browser, allowedBrowser;
 async function tracePlayback(context, { rejectFirst = false, denyStorage = false } = {}) {
   await context.addInitScript(({ rejectFirst, denyStorage }) => {
     const nativePlay = HTMLMediaElement.prototype.play;
-    const trace = window.__musicPlayTrace = { calls: [], trustedInteractions: 0, rejected: 0 };
+    const trace = window.__musicPlayTrace = { calls: [], sources: [], trustedInteractions: 0, rejected: 0 };
+    const sceneFrames = () => window.__JACARANDA__?.inspect().frames ?? 0;
+    const sourceDescriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
+    const noteSource = element => {
+      if (element.id === 'background-music') trace.sources.push({ sceneFrames: sceneFrames(), trustedInteractions: trace.trustedInteractions });
+    };
+    Object.defineProperty(HTMLMediaElement.prototype, 'src', {
+      ...sourceDescriptor,
+      set(value) { noteSource(this); return sourceDescriptor.set.call(this, value); }
+    });
+    const nativeSetAttribute = Element.prototype.setAttribute;
+    Element.prototype.setAttribute = function (name, value) {
+      if (this instanceof HTMLMediaElement && String(name).toLowerCase() === 'src') noteSource(this);
+      return nativeSetAttribute.call(this, name, value);
+    };
     for (const type of ['pointerup', 'click', 'keydown']) {
       document.addEventListener(type, event => { if (event.isTrusted) trace.trustedInteractions++; }, true);
     }
     HTMLMediaElement.prototype.play = function () {
       if (this.id !== 'background-music') return nativePlay.call(this);
       trace.calls.push({
+        sceneFrames: sceneFrames(),
         trustedInteractions: trace.trustedInteractions,
         userActive: navigator.userActivation?.isActive ?? null,
         hasBeenActive: navigator.userActivation?.hasBeenActive ?? null
@@ -121,6 +136,9 @@ async function autoplayOutcome(page, label) {
   assert.equal(state.autoplay, false, `${label}: startup is an explicit play() attempt rather than an unchecked autoplay attribute`);
   assert.equal(state.hasSource, true, `${label}: startup assigns the audio resource`);
   assert.equal(trace.calls[0].trustedInteractions, 0, `${label}: the first play() attempt precedes all user input`);
+  assert.ok(trace.calls[0].sceneFrames >= 2, `${label}: automatic playback waits for the scene to render`);
+  assert.ok(trace.sources.length > 0 && trace.sources.every(source => source.trustedInteractions > 0 || source.sceneFrames >= 2),
+    `${label}: automatic audio source assignment also waits for scene readiness`);
   return { state, trace };
 }
 
@@ -328,9 +346,21 @@ try {
   });
   const allowedContext = await allowedBrowser.newContext({ viewport: { width: 390, height: 844 } });
   await tracePlayback(allowedContext);
+  const autoplayPlayingMarker = '__JACARANDA_AUTOPLAY_PLAYING_WITHOUT_INSPECTION__';
+  await allowedContext.addInitScript(marker => {
+    document.addEventListener('playing', event => {
+      if (event.target instanceof HTMLAudioElement && event.target.id === 'background-music') console.info(marker);
+    }, true);
+  }, autoplayPlayingMarker);
   const allowedPage = await allowedContext.newPage();
   allowedPage.on('pageerror', error => errors.push(error.message));
-  await allowedPage.goto(targetURL);
+  // Runtime evaluations can temporarily carry a debugger user gesture.
+  // Wait through Node's console subscription before any page-side inspection
+  // so deferred startup records the untouched browser activation state.
+  await Promise.all([
+    allowedPage.waitForEvent('console', { predicate: message => message.text() === autoplayPlayingMarker, timeout: 60000 }),
+    allowedPage.goto(targetURL)
+  ]);
   await loaded(allowedPage);
   const allowedAutoplay = await autoplayOutcome(allowedPage, 'explicitly allowed autoplay policy');
   const autoplayDecoded = await playing(allowedPage);
@@ -347,10 +377,11 @@ try {
     ok: true, offline: offline && !existingURL,
     media: { duration: decoded.duration, volume: decoded.volume, embeddedSource: decoded.embeddedSource, resumedFrom: stopped.currentTime, resumedTo: resumed.currentTime },
     desktop: desktop.rect, postcard: postcard.rect, intermediate: intermediate.rect, mobile: mobile.rect, mobilePostcard: mobilePostcard.rect,
-    autoplay: { initialCalls: firstAutoplay.trace.calls.length, firstState: initial.buttons[0].state, restoredState: restored.buttons[0].state,
+    autoplay: { initialCalls: firstAutoplay.trace.calls.length, firstState: initial.buttons[0].state, firstPlaySceneFrames: firstAutoplay.trace.calls[0].sceneFrames,
+      firstSourceSceneFrames: firstAutoplay.trace.sources[0].sceneFrames, restoredState: restored.buttons[0].state,
       allowedPolicyState: allowedAutoplay.state.buttons[0].state, allowedPolicyCurrentTime: autoplayDecoded.currentTime },
     blocked: blocked.buttons[0].state,
-    checks: ['startup play attempt', 'trusted page-click fallback', 'allowed-policy autoplay decode', 'real MP3 decode', 'pause/resume', 'keyboard fallback',
+    checks: ['scene-first source and play', 'startup play attempt', 'trusted page-click fallback', 'allowed-policy autoplay decode', 'real MP3 decode', 'pause/resume', 'keyboard fallback',
       'time and postcard continuity', 'on/off/on promise race', 'blocked-play retry', 'saved on/off preference', 'off stays off after other gestures', 'mobile controls', 'storage fallback with touch'],
     errors
   }, null, 2));

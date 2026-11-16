@@ -732,7 +732,7 @@ function animate(){requestAnimationFrame(animate);const elapsed=clock.getDelta()
   }
   fallingMesh.instanceMatrix.needsUpdate=true;
   renderer.render(scene,camera);frames++;lastRender=time;
-  if(frames===2)document.querySelector('#loading').classList.add('done');
+  if(frames===2){document.querySelector('#loading').classList.add('done');music.onSceneReady();}
 }
 animate();
 // Read-only scene diagnostics and deterministic view helpers for local QA.

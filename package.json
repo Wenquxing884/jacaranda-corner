@@ -6,8 +6,12 @@
   "description": "A small Sydney spring, made with Three.js",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
+    "build": "node scripts/build.mjs",
+    "build:offline": "node scripts/build.mjs offline",
+    "build:web": "node scripts/build.mjs web",
     "preview": "vite preview --host 127.0.0.1",
+    "preview:web": "vite preview --mode web --host 127.0.0.1",
+    "sync:blog": "node scripts/sync-blog.mjs",
     "test": "node tests/geometry.test.mjs && node tests/road-edge.test.mjs && node tests/night-lighting.test.mjs && node tests/time-slider.test.mjs && node tests/scene.test.mjs && node tests/shadows.test.mjs && node tests/music.test.mjs",
     "test:geometry": "node tests/geometry.test.mjs",
     "test:road-edge": "node tests/road-edge.test.mjs",
@@ -15,7 +19,8 @@
     "test:time-slider": "node tests/time-slider.test.mjs",
     "test:scene": "node tests/scene.test.mjs",
     "test:shadows": "node tests/shadows.test.mjs",
-    "test:music": "node tests/music.test.mjs"
+    "test:music": "node tests/music.test.mjs",
+    "test:music-network": "node tests/music-network.test.mjs"
   },
   "dependencies": {
     "three": "^0.181.0"

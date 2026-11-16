@@ -16,6 +16,8 @@ export function createBackgroundMusic() {
   let enabled = true;
   try { enabled = localStorage.getItem(preferenceKey) !== 'off'; } catch { /* Storage can be disabled on local pages. */ }
   let state = enabled ? 'ready' : 'idle', wanted = false, request = 0, awaitingGesture = false;
+  let autoPending = enabled, sceneReady = false;
+  let frameTask = null, idleTask = null, timeoutTask = null;
   const gestureEvents = ['pointerup', 'keydown', 'click'];
 
   function remember(enabled) {
@@ -26,7 +28,7 @@ export function createBackgroundMusic() {
     state = next;
     const labels = { idle: '音乐 · 关', ready: '音乐 · 待播', loading: '音乐 · 加载中', playing: '音乐 · 开', blocked: '音乐 · 点击播放', error: '音乐 · 重试' };
     const actions = {
-      idle: '开启背景音乐', ready: '继续播放背景音乐', loading: '取消播放背景音乐',
+      idle: '开启背景音乐', ready: autoPending ? '关闭背景音乐' : '继续播放背景音乐', loading: '取消播放背景音乐',
       playing: '关闭背景音乐', blocked: '点击播放背景音乐', error: '重试播放背景音乐'
     };
     for (const button of buttons) {
@@ -39,8 +41,10 @@ export function createBackgroundMusic() {
   }
 
   function stop() {
+    enabled = false;
     wanted = false;
     request++;
+    cancelAutoStart();
     clearGestureRetry();
     audio.pause();
     remember(false);
@@ -48,7 +52,9 @@ export function createBackgroundMusic() {
   }
 
   async function start() {
+    cancelAutoStart();
     clearGestureRetry();
+    enabled = true;
     wanted = true;
     const current = ++request;
     update('loading');
@@ -56,7 +62,8 @@ export function createBackgroundMusic() {
     if (!audio.hasAttribute('src')) audio.src = musicUrl;
     else if (audio.error) audio.load();
     try {
-      // Try on entry; retries run synchronously inside a trusted user gesture.
+      // Native media buffers independently of the scene. Gesture retries must
+      // call play() here synchronously, before yielding their activation.
       await audio.play();
       if (current !== request) { if (!wanted) audio.pause(); return; }
       if (!wanted) { audio.pause(); return; }
@@ -68,10 +75,43 @@ export function createBackgroundMusic() {
       audio.pause();
       if (error.name === 'NotAllowedError') {
         update('blocked');
-        awaitingGesture = true;
-        gestureEvents.forEach(type => document.addEventListener(type, retryFromGesture, true));
+        armGestureRetry();
       } else update('error');
     }
+  }
+
+  function cancelAutoStart() {
+    autoPending = false;
+    if (frameTask !== null) cancelAnimationFrame(frameTask);
+    if (idleTask !== null) window.cancelIdleCallback(idleTask);
+    if (timeoutTask !== null) clearTimeout(timeoutTask);
+    frameTask = idleTask = timeoutTask = null;
+  }
+
+  function onSceneReady() {
+    if (sceneReady) return;
+    sceneReady = true;
+    if (!autoPending || !enabled) return;
+    // Let the first street frames reach the screen before requesting music.
+    // No media event or download is part of the visual loading gate.
+    frameTask = requestAnimationFrame(() => {
+      frameTask = requestAnimationFrame(() => {
+        frameTask = null;
+        if (!autoPending || !enabled || wanted) return;
+        const attempt = () => {
+          idleTask = timeoutTask = null;
+          if (autoPending && enabled && !wanted) start();
+        };
+        if (typeof window.requestIdleCallback === 'function') {
+          idleTask = window.requestIdleCallback(attempt, { timeout: 1200 });
+        } else timeoutTask = setTimeout(attempt, 0);
+      });
+    });
+  }
+
+  function armGestureRetry() {
+    awaitingGesture = true;
+    gestureEvents.forEach(type => document.addEventListener(type, retryFromGesture, true));
   }
 
   function clearGestureRetry() {
@@ -107,10 +147,11 @@ export function createBackgroundMusic() {
     audio.pause();
     if (wasWanted) update('error');
   });
-  buttons.forEach(button => button.addEventListener('click', () => wanted ? stop() : start()));
-  // Autoplay is best-effort: a browser may require the first real interaction.
-  // Preserve an explicit "off" preference across reloads and both scenes.
+  buttons.forEach(button => button.addEventListener('click', () => wanted || autoPending ? stop() : start()));
+  // A gesture during the initial visual load may unlock music immediately.
+  // Otherwise onSceneReady schedules best-effort autoplay after first paint.
+  // An explicit "off" preference skips both the task and the media request.
   update(state);
-  if (enabled) start();
-  return { inspect: () => ({ state, awaitingGesture, paused: audio.paused, currentTime: audio.currentTime, volume: audio.volume, loop: audio.loop, error: audio.error?.code ?? null }) };
+  if (enabled) armGestureRetry();
+  return { onSceneReady, inspect: () => ({ state, autoPending, sceneReady, awaitingGesture, paused: audio.paused, currentTime: audio.currentTime, volume: audio.volume, loop: audio.loop, error: audio.error?.code ?? null }) };
 }
