@@ -30,6 +30,10 @@
           <button class="time-button" data-time="night" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M20 15.3A8.3 8.3 0 0 1 8.7 4 8.4 8.4 0 1 0 20 15.3Z"/><path d="M17 3v4m-2-2h4"/></svg><span>夜晚</span></button>
         </div>
       </div>
+      <button id="music-toggle" class="music-toggle music-toggle--scene" type="button" data-music-toggle data-state="idle" aria-pressed="false" aria-label="开启背景音乐" title="You Are All I Need · 点击开启背景音乐">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l11-2v13M9 8l11-2"/><ellipse cx="6" cy="18" rx="3" ry="2.5"/><ellipse cx="17" cy="16" rx="3" ry="2.5"/></svg>
+        <span data-music-label>音乐 · 关</span><span class="music-indicator" aria-hidden="true"></span>
+      </button>
       <div class="view-tools" role="group" aria-label="视角控制">
         <button id="zoom-in" aria-label="放大" title="放大"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
         <button id="zoom-out" aria-label="缩小" title="缩小"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
@@ -42,6 +46,10 @@
       <div id="sydney-modal" class="sydney-modal" aria-hidden="true">
         <div class="sydney-shade"></div>
         <section class="sydney-dialog" role="dialog" aria-modal="true" aria-labelledby="sydney-title">
+          <button id="music-toggle-postcard" class="music-toggle music-toggle--postcard" type="button" data-music-toggle data-state="idle" aria-pressed="false" aria-label="开启背景音乐" title="You Are All I Need · 点击开启背景音乐">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V5l11-2v13M9 8l11-2"/><ellipse cx="6" cy="18" rx="3" ry="2.5"/><ellipse cx="17" cy="16" rx="3" ry="2.5"/></svg>
+            <span data-music-label>音乐 · 关</span><span class="music-indicator" aria-hidden="true"></span>
+          </button>
           <button id="sydney-close" class="sydney-close" type="button" aria-label="关闭悉尼风景">Close <span aria-hidden="true">×</span></button>
           <div class="sydney-heading">
             <span>SYDNEY</span>

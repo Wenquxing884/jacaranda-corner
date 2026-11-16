@@ -6,7 +6,10 @@ import { createJacarandaBlossomGeometry } from './jacaranda-blossom.js';
 import { createJacarandaWoodGeometry, releaseJacarandaWoodScratch } from './jacaranda-wood.js';
 import { createJacarandaBarkMaterial } from './jacaranda-bark.js';
 import { createEntryLantern } from './entry-lantern.js';
+import { createBackgroundMusic } from './background-music.js';
 import './style.css';
+
+const music = createBackgroundMusic();
 
 // All dimensions are in miniature-world metres. Positive Z is the front street.
 const scene = new THREE.Scene();
@@ -734,7 +737,7 @@ function animate(){requestAnimationFrame(animate);const elapsed=clock.getDelta()
 animate();
 // Read-only scene diagnostics and deterministic view helpers for local QA.
 window.__JACARANDA__={
-  ready:true,renderer,scene,camera,controls,trees,setTime,resetCamera,petalBurst,sydneyWindow,adTargets,posterBoard,
+  ready:true,renderer,scene,camera,controls,trees,setTime,resetCamera,petalBurst,sydneyWindow,music,adTargets,posterBoard,
   inspect:()=>({trees:trees.length,flowers:trees.reduce((n,t)=>n+t.flowers,0),drawCalls:renderer.info.render.calls,triangles:renderer.info.render.triangles,geometries:renderer.info.memory.geometries,textures:renderer.info.memory.textures,time:currentTime,lightPosition:sun.position.toArray(),transition,shadowAutoUpdate:renderer.shadowMap.autoUpdate,postcardBackdropCached:postcardBackdropActive,cameraNear:camera.near,camera:camera.position.toArray(),target:controls.target.toArray(),activePetals:falling.filter(p=>p.active).length,frames,lastRender}),
   view:(x,y,z)=>{resetTween=null;camera.position.set(x,y,z);controls.update();},
   crownScreen:(index)=>{const t=trees[index],p=V(t.spec.x,t.h*.85,t.spec.z).project(camera);return {x:(p.x+1)*innerWidth/2,y:(1-p.y)*innerHeight/2};},

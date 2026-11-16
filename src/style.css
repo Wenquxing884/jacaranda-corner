@@ -149,12 +149,42 @@
 #app.postcard-open .intro,
 #app.postcard-open .time-panel,
 #app.postcard-open .view-tools,
+#app.postcard-open .music-toggle--scene,
 #app.postcard-open footer,
 #app.postcard-open #toast{
   opacity:0!important;
   visibility:hidden;
   pointer-events:none;
   transition:opacity .42s ease,visibility 0s linear .42s!important;
+}
+
+/* A shared song, with a reachable control in each scene. Keep the postcard's
+   control inside the modal so keyboard and screen-reader users can reach it. */
+#app .music-toggle{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  min-height:36px;padding:8px 13px;border:1px solid #ffffffb8;border-radius:24px;
+  background:#ffffff80;color:#82728f;font-size:10px;letter-spacing:.7px;
+  backdrop-filter:blur(12px);pointer-events:auto;white-space:nowrap;
+  transition:color .25s,background-color .25s,border-color .25s,box-shadow .25s;
+}
+.music-toggle svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+.music-indicator{width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.35;transition:opacity .2s,box-shadow .2s}
+.music-toggle[data-state="playing"] .music-indicator{opacity:1;box-shadow:0 0 8px #a689c988}
+#app .music-toggle:hover{background:#fff;color:#69527f}
+#app .music-toggle[data-state="playing"]{color:#70528b;border-color:#cbb9dc}
+.music-toggle--scene{position:absolute;z-index:2;left:5.7%;bottom:calc(18% - 49px)}
+#app.night .music-toggle--scene,#app .music-toggle--postcard{color:#dacbe7;background:#ffffff0d;border-color:#ffffff2e}
+#app.night .music-toggle--scene:hover,#app .music-toggle--postcard:hover{background:#ffffff20;color:#f2eaf8}
+#app.night .music-toggle[data-state="playing"],#app .music-toggle--postcard[data-state="playing"]{color:#f0dfff;border-color:#c9abdf80}
+.music-toggle--postcard{position:absolute;z-index:5;right:calc(3.1% + 100px);top:25px}
+@media(min-width:1700px){.music-toggle--scene{left:7%}}
+@media(max-width:1000px){.music-toggle--scene{left:5%;bottom:calc(14% - 49px)}}
+@media(min-width:651px) and (max-width:1000px) and (max-height:680px){.music-toggle--scene{left:auto;right:5%;top:69px;bottom:auto}}
+@media(max-width:900px){.music-toggle--postcard{right:calc(5% + 100px);top:18px}}
+@media(max-width:650px){
+  #app .music-toggle{min-height:36px;padding:7px 11px;font-size:9px;gap:6px}
+  .music-toggle--scene{top:63px;right:6%;bottom:auto;left:auto}
+  .music-toggle--postcard{top:14px;right:calc(6% + 88px)}
 }
 #app.postcard-open #scene{
   filter:saturate(.88) brightness(.9);
